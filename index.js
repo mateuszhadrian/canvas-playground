@@ -19,6 +19,8 @@ class CanvasPlayground {
     imageWidth = 4096;
     imageHeight = 1600;
 
+    drawImageNumber
+
     photo = new Image();
 
     constructor() {
@@ -50,7 +52,13 @@ class CanvasPlayground {
         const scale = this.canvas.height / this.imageHeight;
         this.imageWidth = scale * this.imageWidth * this.zoomFactor;
         this.imageHeight = scale * this.imageHeight * this.zoomFactor;
-        this.ctx.drawImage(this.photo, this.position.x, this.position.y, this.imageWidth, this.imageHeight);
+        this.drawImageNumber = Math.ceil(this.canvas.width / this.imageHeight) + 1;
+        for (let i=1; i<=this.drawImageNumber; i++){
+            this.ctx.drawImage(this.photo, this.position.x + this.imageWidth * i - this.imageWidth, this.position.y, this.imageWidth, this.imageHeight);
+            this.ctx.drawImage(this.photo, this.position.x - this.imageWidth * i + this.imageWidth, this.position.y, this.imageWidth, this.imageHeight);
+        }
+
+
     }
 
     getEventLocation = (e) => {
