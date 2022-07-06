@@ -104,11 +104,9 @@ class CanvasPlayground {
             fitRatio = this.canvas.width / this.originalImageWidth;
         }
 
-        let current = fitRatio;
-
         this.scale = {
             fitAxis,
-            current,
+            current: fitRatio,
             fit: fitRatio,
         };
     }
