@@ -3,41 +3,58 @@ class CanvasPlayground {
     canvas = document.getElementById('canvas');
     ctx = this.canvas.getContext('2d', {alpha: false});
     isDragging = false;
-    zoomFactor = 1;
-    cursorCoordinates;
+
+    originalImageWidth = 4096;
+    originalImageHeight = 1600;
+
+    size = {
+        current: {
+            width: 0,
+            height: 0,
+        },
+        fit: {
+            width: 0,
+            height: 0,
+        },
+    };
+
+    scale = {
+        fitAxis: '',
+        current: 0,
+        fit: 0,
+    };
 
     position = {
         x: 0,
         y: 0,
     }
 
-    dragStart = {
+    panDragStart = {
         x: 0,
         y: 0
     };
 
-    imageWidth = 4096;
-    imageHeight = 1600;
-
-    drawImageNumber
+    is360 = true;
 
     photo = new Image();
 
     constructor() {
+        this.setCanvasDimensions()
         this.photo.src = './photos/canvasTestPhoto.png';
 
         this.photo.addEventListener('load', () => {
-            this.drawImage();
+            this.drawImage()
             this.panActivation();
             this.zoomActivation()
         });
 
         window.addEventListener('resize', () => {
-            this.drawImage();
+            this.drawImage()
             this.panActivation();
             this.zoomActivation()
         });
-
+        this.setScaleForZooming();
+        this.setSizesByScale();
     }
 
     setCanvasDimensions() {
@@ -45,23 +62,7 @@ class CanvasPlayground {
         this.canvas.height = window.innerHeight;
     }
 
-    drawImage = () => {
-        this.setCanvasDimensions();
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        const scale = this.canvas.height / this.imageHeight;
-        this.imageWidth = scale * this.imageWidth * this.zoomFactor;
-        this.imageHeight = scale * this.imageHeight * this.zoomFactor;
-        this.drawImageNumber = Math.ceil(this.canvas.width / this.imageHeight) + 1;
-        for (let i=1; i<=this.drawImageNumber; i++){
-            this.ctx.drawImage(this.photo, this.position.x + this.imageWidth * i - this.imageWidth, this.position.y, this.imageWidth, this.imageHeight);
-            this.ctx.drawImage(this.photo, this.position.x - this.imageWidth * i + this.imageWidth, this.position.y, this.imageWidth, this.imageHeight);
-        }
-
-
-    }
-
-    getEventLocation = (e) => {
+    getPanEventLocation = (e) => {
         return {
             x: e.clientX,
             y: e.clientY
@@ -70,9 +71,9 @@ class CanvasPlayground {
 
     onPanStart = (e) => {
         this.isDragging = true;
-        this.dragStart = {
-            x: this.getEventLocation(e).x - this.position.x,
-            y: this.getEventLocation(e).y - this.position.y
+        this.panDragStart = {
+            x: this.getPanEventLocation(e).x - this.position.x,
+            y: this.getPanEventLocation(e).y - this.position.y
         }
     };
 
@@ -80,47 +81,183 @@ class CanvasPlayground {
         this.isDragging = false;
     }
 
-    updatePosition = (position) => {
-        let canvasHigherThanImage = this.canvas.height > this.imageHeight;
-        let minPositionY = - (this.imageHeight - this.canvas.height);
-        let maxPositionY = 0
-        if (canvasHigherThanImage){
-            position.y = (this.canvas.height - this.imageHeight)/2
-        } else {
-            if (position.y < minPositionY){
-                position.y = minPositionY
-            }
-            if (position.y > maxPositionY){
-                position.y = maxPositionY
-            }
-        }
-        this.position = position;
-    }
-
     panHandler = (e) => {
         let position;
         if (this.isDragging) {
             position = {
-                x: this.getEventLocation(e).x - this.dragStart.x,
-                y: this.getEventLocation(e).y - this.dragStart.y
+                x: this.getPanEventLocation(e).x - this.panDragStart.x,
+                y: this.getPanEventLocation(e).y - this.panDragStart.y
             };
-            this.updatePosition(position);
-            this.drawImage();
+            this.moveImage(position.x, position.y);
+        }
+    }
 
+    setScaleForZooming = () => {
+        const canvasRatio = this.canvas.width / this.canvas.height;
+        const imageRatio = this.originalImageWidth / this.originalImageHeight;
+        const fitAxis = canvasRatio < imageRatio ? 'x' : 'y';
+        let fitRatio;
+
+        if (fitAxis === 'x') {
+            fitRatio = this.canvas.height / this.originalImageHeight;
+        } else if (fitAxis === 'y') {
+            fitRatio = this.canvas.width / this.originalImageWidth;
+        }
+
+        let current = fitRatio;
+
+        this.scale = {
+            fitAxis,
+            current,
+            fit: fitRatio,
+        };
+    }
+
+    setSizesByScale = () => {
+        this.size = {
+            current: {
+                width: this.originalImageWidth * this.scale.current,
+                height: this.originalImageHeight * this.scale.current
+            },
+            fit: {
+                width: this.originalImageWidth * this.scale.fit,
+                height: this.originalImageHeight * this.scale.fit
+            },
         }
     }
 
     zoomHandler = (e) => {
         e.preventDefault();
-        this.cursorCoordinates = {x: e.pageX, y: e.pageY}
-        const direction = e.deltaY > 0 ? 'in' : 'out';
-        if (direction === 'in'){
-            this.zoomFactor -= 0.01
-        } else {
-            this.zoomFactor += 0.01
+        const direction = e.deltaY > 0 ? 'out' : 'in';
+        const imagePosition = this.getZoomImagePosition(e.pageX, e.pageY, direction);
+        this.moveImage(imagePosition.x, imagePosition.y)
+    }
+
+    moveImage = (x, y) => {
+        this.updatePosition(x, y);
+        this.drawImage();
+    }
+
+    updatePosition(x, y) {
+        this.position = this.getNextPosition(x, y)
+    }
+
+    drawImage = () => {
+        this.ctx.save();
+
+        this.ctx.translate(this.position.x, this.position.y);
+        this.ctx.scale(this.scale.current, this.scale.current);
+
+        for (let i = 0; i < 4; i++) {
+            const nextX = i * this.originalImageWidth;
+            this.ctx.drawImage(this.photo, nextX, 0, this.originalImageWidth, this.originalImageHeight);
         }
-        this.updatePosition(this.position)
-        this.drawImage()
+
+        this.ctx.translate(this.position.x, this.position.y);
+        this.ctx.restore();
+    }
+
+    getNextPosition = (x, y) => {
+        const isUnderFitScale = this.scale.current < this.scale.fit;
+
+        if (this.is360) {
+            const minX = -this.size.current.width;
+            const maxX = 0;
+            const minY = this.canvas.height - this.size.current.height;
+            const maxY = 0;
+
+            if (x > maxX) {
+                x = -this.size.current.width + x;
+            } else if (x < minX) {
+                x = x + this.size.current.width;
+            }
+
+            if (isUnderFitScale) {
+                y = (this.size.fit.height - this.size.current.height) / 2;
+            } else if (y >= maxY) {
+                y = maxY;
+            } else if (y <= minY) {
+                y = minY;
+            }
+        } else {
+            const minX = -(this.size.current.width - this.canvas.width);
+            const maxX = 0;
+            const minY = this.canvas.height - this.size.current.height;
+            const maxY = 0;
+
+            if (isUnderFitScale) {
+                if (this.scale.fitAxis === 'x') {
+                    if (x > maxX) {
+                        x = maxX;
+                    } else if (x < minX) {
+                        x = minX;
+                    }
+                } else if (this.scale.fitAxis === 'y') {
+                    x = (this.canvas.width - this.size.current.width) / 2;
+                }
+            } else if (x > maxX) {
+                x = maxX;
+            } else if (x < minX) {
+                x = minX;
+            }
+
+            if (isUnderFitScale) {
+                if (this.scale.fitAxis === 'x') {
+                    y = (this.size.fit.height - this.size.current.height) / 2;
+                } else if (this.scale.fitAxis === 'y') {
+                    if (y > maxY) {
+                        y = maxY;
+                    } else if (y < minY) {
+                        y = minY;
+                    }
+                }
+            } else if (y > maxY) {
+                y = maxY;
+            } else if (y < minY) {
+                y = minY;
+            }
+        }
+
+        return { x, y };
+    }
+
+    getZoomImagePosition = (mouseX, mouseY, direction) => {
+        const imagePosition = {x: this.position.x, y: this.position.y};
+        const prevImageHeight = this.size.current.height;
+        const zoomPercentage = 10;
+        let zoomFactor;
+
+        if (direction === 'in') {
+            zoomFactor = zoomPercentage / 100;
+        } else {
+            zoomFactor = (prevImageHeight * 100) / (zoomPercentage + 100) / prevImageHeight - 1;
+        }
+
+        const scaleBaseValue = prevImageHeight * zoomFactor;
+        const currentImageSize = this.scaleBy(scaleBaseValue);
+        const ratioX = currentImageSize.height / prevImageHeight;
+
+        let nextX = ratioX * (mouseX + -imagePosition.x) - (mouseX + -imagePosition.x);
+        let nextY = ratioX * (mouseY + -imagePosition.y) - (mouseY + -imagePosition.y);
+
+        nextX = imagePosition.x + -nextX;
+        nextY = imagePosition.y + -nextY;
+
+        return {
+            x: nextX,
+            y: nextY
+        }
+    }
+
+    scaleBy = (value) => {
+        const newImageHeight = this.size.current.height + value;
+        this.scale.current = newImageHeight / this.originalImageHeight;
+
+            this.size.current = {
+                width: this.originalImageWidth * this.scale.current,
+                height: this.originalImageHeight * this.scale.current
+        }
+        return this.size.current
     }
 
     panActivation = () => {
@@ -132,7 +269,6 @@ class CanvasPlayground {
     zoomActivation = () => {
         this.canvas.addEventListener('wheel', this.zoomHandler)
     }
-
 }
 
 new CanvasPlayground();
